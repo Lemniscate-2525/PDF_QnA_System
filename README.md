@@ -16,9 +16,3 @@ This application allows users to upload PDF documents and ask questions about th
 - PostgreSQL with pgvector extension
 - Virtual environment (recommended)
 
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/Shekhar442/AI-PDF-QA-System.git
-cd pdf-qa-system
