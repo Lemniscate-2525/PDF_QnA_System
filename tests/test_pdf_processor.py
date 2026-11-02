@@ -16,6 +16,11 @@ def test_chunking_creates_multiple_chunks_with_overlap(processor):
     assert len(chunks) > 1
     assert all(chunk for chunk in chunks)
     assert all(len(chunk) <= 100 for chunk in chunks)
+    assert all(
+        __import__("re").fullmatch(r"token\\d+", word)
+        for chunk in chunks
+        for word in chunk.split()
+    )
     assert any(
         set(chunks[index].split()) & set(chunks[index + 1].split())
         for index in range(len(chunks) - 1)
