@@ -86,7 +86,8 @@ def store_document(conn, filename, content, content_hash):
         )
         row = cur.fetchone()
         if row:
-            conn.commit()
+            # Leave the new document insert in the current transaction.
+            # store_embeddings commits the document and its vectors together.
             return row[0], True
 
         cur.execute("SELECT id FROM documents WHERE content_hash = %s", (content_hash,))
