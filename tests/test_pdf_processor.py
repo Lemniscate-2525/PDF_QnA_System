@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from app.pdf_processor import PDFProcessor
@@ -17,7 +19,7 @@ def test_chunking_creates_multiple_chunks_with_overlap(processor):
     assert all(chunk for chunk in chunks)
     assert all(len(chunk) <= 100 for chunk in chunks)
     assert all(
-        __import__("re").fullmatch(r"token\\d+", word)
+        re.fullmatch(r"token[0-9]+", word)
         for chunk in chunks
         for word in chunk.split()
     )
