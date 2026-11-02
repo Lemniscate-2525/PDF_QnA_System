@@ -104,8 +104,12 @@ class PDFProcessor:
                 break
 
             next_start = max(start + 1, end - overlap)
-            while next_start < end and text[next_start].isspace():
-                next_start += 1
+            # Never begin the next chunk in the middle of a word.
+            next_space = text.find(" ", next_start, end)
+            if next_space != -1:
+                next_start = next_space + 1
+            else:
+                next_start = end
             start = next_start if next_start > start else end
 
         return chunks
