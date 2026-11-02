@@ -1,107 +1,135 @@
-from PyPDF2 import PdfReader
-from sentence_transformers import SentenceTransformer
-import numpy as np
+from functools import lru_cache
 import re
 
+import fitz
+import numpy as np
+import pytesseract
+from PIL import Image
+from sentence_transformers import SentenceTransformer
+from pytesseract.pytesseract import TesseractNotFoundError
+
+from app.config import OCR_ENABLED, OCR_LANGUAGES
+
+
+@lru_cache(maxsize=1)
+def get_embedding_model():
+    """Load one embedding model per Python process and reuse it across reruns."""
+    return SentenceTransformer("all-MiniLM-L6-v2")
+
+
 class PDFProcessor:
-    def __init__(self):
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
-    
+    def __init__(self, model=None):
+        self.model = model or get_embedding_model()
+
     def clean_text(self, text):
-        # Remove special characters and normalize whitespace
-        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\xff]', '', text)
-        text = re.sub(r'\s+', ' ', text)
-        # Handle encoding by replacing problematic characters
-        text = text.encode('ascii', errors='ignore').decode('ascii')
-        return text.strip()
-    
-    def extract_text(self, pdf_file):
+        # Preserve Unicode; remove only control characters that commonly corrupt extracted text.
+        text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", " ", text or "")
+        return re.sub(r"\s+", " ", text).strip()
+
+    def extract_text(self, pdf_source, ocr_enabled=OCR_ENABLED):
+        """Extract text page by page, OCR-ing pages with little or no selectable text.
+
+        pdf_source may be raw PDF bytes, a file-like object, or a filesystem path.
+        OCR requires the Tesseract executable to be installed separately.
+        """
+        if isinstance(pdf_source, (bytes, bytearray)):
+            document = fitz.open(stream=bytes(pdf_source), filetype="pdf")
+        elif hasattr(pdf_source, "read"):
+            document = fitz.open(stream=pdf_source.read(), filetype="pdf")
+        else:
+            document = fitz.open(pdf_source)
+
+        page_texts = []
         try:
-            reader = PdfReader(pdf_file)
-            text = ""
-            for page in reader.pages:
-                try:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += self.clean_text(page_text) + " "
-                except Exception as e:
-                    print(f"Error extracting text from page: {str(e)}")
-                    continue
-            return text.strip()
-        except Exception as e:
-            print(f"Error processing PDF: {str(e)}")
-            return ""
-    
-    def create_chunks(self, text, chunk_size=1000, overlap=100):
-        if not text:
+            for page_number, page in enumerate(document, start=1):
+                page_text = page.get_text("text") or ""
+                if ocr_enabled and len(page_text.strip()) < 40:
+                    try:
+                        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                        image = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                        ocr_text = pytesseract.image_to_string(image, lang=OCR_LANGUAGES)
+                        if ocr_text.strip():
+                            page_text = ocr_text
+                    except TesseractNotFoundError as exc:
+                        raise RuntimeError(
+                            "OCR is enabled but Tesseract is not installed or not on PATH. "
+                            "Install Tesseract, or set OCR_ENABLED=false in .env for text-based PDFs."
+                        ) from exc
+                    except pytesseract.TesseractError as exc:
+                        raise RuntimeError(
+                            f"OCR failed on PDF page {page_number}. Check the installed Tesseract language data."
+                        ) from exc
+
+                cleaned = self.clean_text(page_text)
+                if cleaned:
+                    page_texts.append(cleaned)
+        finally:
+            document.close()
+
+        return " ".join(page_texts).strip()
+
+    def create_chunks(self, text, chunk_size=1000, overlap=150):
+        """Create character-sized windows with real overlap and whitespace-aware boundaries."""
+        if not text or not text.strip():
             return []
-        
-        # Split text into sentences first
-        sentences = re.split(r'(?<=[.!?])\s+', text)
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be greater than zero.")
+        if overlap < 0 or overlap >= chunk_size:
+            raise ValueError("overlap must be >= 0 and smaller than chunk_size.")
+
+        text = re.sub(r"\s+", " ", text).strip()
         chunks = []
-        current_chunk = []
-        current_size = 0
-        
-        for sentence in sentences:
-            sentence = sentence.strip()
-            sentence_size = len(sentence)
-            
-            if sentence_size > chunk_size:
-                # Handle very long sentences by splitting them
-                words = sentence.split()
-                for i in range(0, len(words), chunk_size):
-                    chunk = " ".join(words[i:i + chunk_size])
-                    if chunk:
-                        chunks.append(chunk)
-                continue
-                
-            if current_size + sentence_size > chunk_size:
-                if current_chunk:
-                    chunks.append(" ".join(current_chunk))
-                current_chunk = [sentence]
-                current_size = sentence_size
-            else:
-                current_chunk.append(sentence)
-                current_size += sentence_size
-                
-        if current_chunk:
-            chunks.append(" ".join(current_chunk))
-            
+        start = 0
+        text_length = len(text)
+
+        while start < text_length:
+            end = min(start + chunk_size, text_length)
+            if end < text_length:
+                # Prefer a natural boundary near the end without creating tiny chunks.
+                boundary_floor = start + int(chunk_size * 0.60)
+                sentence_boundary = max(
+                    text.rfind(". ", boundary_floor, end),
+                    text.rfind("? ", boundary_floor, end),
+                    text.rfind("! ", boundary_floor, end),
+                )
+                whitespace_boundary = text.rfind(" ", boundary_floor, end)
+                boundary = sentence_boundary if sentence_boundary > boundary_floor else whitespace_boundary
+                if boundary > start:
+                    end = boundary + 1
+
+            chunk = text[start:end].strip()
+            if chunk and (not chunks or chunk != chunks[-1]):
+                chunks.append(chunk)
+            if end >= text_length:
+                break
+
+            next_start = max(start + 1, end - overlap)
+            while next_start < end and text[next_start].isspace():
+                next_start += 1
+            start = next_start if next_start > start else end
+
         return chunks
-    
+
     def generate_embeddings(self, text_chunks):
         if not text_chunks:
-            return np.array([])
-            
-        embeddings = []
-        for chunk in text_chunks:
-            try:
-                if chunk.strip():  # Only process non-empty chunks
-                    embedding = self.model.encode(chunk)
-                    embeddings.append(embedding)
-            except Exception as e:
-                print(f"Error generating embedding: {str(e)}")
-                continue
-                
-        return np.array(embeddings) if embeddings else np.array([])
+            return np.empty((0, 384), dtype=np.float32)
+        embeddings = self.model.encode(
+            text_chunks,
+            batch_size=32,
+            show_progress_bar=False,
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+        )
+        return np.asarray(embeddings, dtype=np.float32)
 
-    def process_pdf(self, pdf_file, chunk_size=1000):
-        """Convenience method to process a PDF file end-to-end"""
-        try:
-            text = self.extract_text(pdf_file)
-            if not text:
-                raise ValueError("No text could be extracted from the PDF")
-                
-            chunks = self.create_chunks(text, chunk_size)
-            if not chunks:
-                raise ValueError("No chunks could be created from the text")
-                
-            embeddings = self.generate_embeddings(chunks)
-            return {
-                'text': text,
-                'chunks': chunks,
-                'embeddings': embeddings
-            }
-        except Exception as e:
-            print(f"Error in PDF processing pipeline: {str(e)}")
-            return None
+    def process_pdf(self, pdf_source, chunk_size=1000, overlap=150):
+        text = self.extract_text(pdf_source)
+        if not text:
+            raise ValueError(
+                "No text could be extracted. If this is a scanned PDF, install Tesseract OCR and retry."
+            )
+        chunks = self.create_chunks(text, chunk_size=chunk_size, overlap=overlap)
+        if not chunks:
+            raise ValueError("No chunks could be created from the extracted PDF text.")
+        embeddings = self.generate_embeddings(chunks)
+        return {"text": text, "chunks": chunks, "embeddings": embeddings}
