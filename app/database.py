@@ -16,9 +16,11 @@ def init_db():
             user=DB_USER,
             password=DB_PASSWORD,
         )
-        register_vector(conn)
         with conn.cursor() as cur:
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        register_vector(conn)
+
+        with conn.cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS documents (
                     id SERIAL PRIMARY KEY,
@@ -48,7 +50,6 @@ def init_db():
                 CREATE INDEX IF NOT EXISTS embeddings_document_id_idx
                 ON embeddings (document_id)
             """)
-            # Requires a reasonably recent pgvector release with HNSW support.
             cur.execute("""
                 CREATE INDEX IF NOT EXISTS embeddings_embedding_hnsw_idx
                 ON embeddings USING hnsw (embedding vector_cosine_ops)
