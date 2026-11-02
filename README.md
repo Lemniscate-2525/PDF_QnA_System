@@ -68,7 +68,7 @@ Create a PostgreSQL database, for example `pdf_qna`, and ensure the `vector` ext
 
 ```powershell
 python -m venv .venv
-.\\.venv\\Scripts\\Activate.ps1
+& "$PWD/.venv/Scripts/Activate.ps1"
 ```
 
 **macOS / Linux**
