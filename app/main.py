@@ -1,50 +1,122 @@
+import hashlib
+
 import streamlit as st
-from database import init_db, store_document, store_embeddings
-from pdf_processor import PDFProcessor
-from qa_engine import QAEngine
-import tempfile
+
+from app.database import (
+    cleanup_db,
+    get_document_by_hash,
+    init_db,
+    list_documents,
+    store_document,
+    store_embeddings,
+)
+from app.pdf_processor import PDFProcessor
+from app.qa_engine import QAEngine
+
+
+@st.cache_resource
+def get_pdf_processor():
+    return PDFProcessor()
+
+
+@st.cache_resource
+def get_qa_engine():
+    return QAEngine()
+
 
 def main():
-    st.title("PDF Question-Answering System")
-    
-    # Initialize components
-    db_conn = init_db()
-    pdf_processor = PDFProcessor()
-    qa_engine = QAEngine()
-    
-    # File upload
-    uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
-    
-    if uploaded_file:
-        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-            tmp_file.write(uploaded_file.read())
-            
-            # Process PDF
-            text = pdf_processor.extract_text(tmp_file.name)
-            chunks = pdf_processor.create_chunks(text)
-            embeddings = pdf_processor.generate_embeddings(chunks)
-            
-            # Store in database
-            doc_id = store_document(db_conn, uploaded_file.name, text)
-            store_embeddings(db_conn, doc_id, embeddings, chunks)
-            
-            st.success("PDF processed and stored successfully!")
-    
-    # Question answering
-    question = st.text_input("Ask a question about the uploaded PDF:")
-    
-    if question:
-        similar_chunks = qa_engine.find_similar_chunks(db_conn, question)
-        response = qa_engine.generate_response(similar_chunks, question)
-        
-        st.subheader("Answer:")
-        st.write(response)
-        
-        st.subheader("Relevant Context:")
-        for i, chunk in enumerate(similar_chunks):
-            st.write(f"Chunk {i+1}:")
-            st.write(chunk)
-            st.write("---")
+    st.set_page_config(page_title="PDF Q&A", page_icon="📄", layout="wide")
+    st.title("📄 PDF Question Answering")
+    st.caption("Ask questions about one selected PDF. Answers are generated from retrieved passages.")
+
+    try:
+        conn = init_db()
+    except Exception as exc:
+        st.error(f"Could not connect to PostgreSQL / initialize pgvector: {exc}")
+        st.info("Check your local .env settings and confirm PostgreSQL has the pgvector extension installed.")
+        st.stop()
+
+    try:
+        processor = get_pdf_processor()
+        qa_engine = get_qa_engine()
+
+        st.subheader("1. Add a PDF")
+        uploaded_file = st.file_uploader("Choose a PDF file", type=["pdf"])
+        if uploaded_file and st.button("Process PDF", type="primary"):
+            pdf_bytes = uploaded_file.getvalue()
+            content_hash = hashlib.sha256(pdf_bytes).hexdigest()
+            existing = get_document_by_hash(conn, content_hash)
+
+            if existing:
+                document_id, filename, _created_at = existing
+                st.session_state["selected_doc_id"] = document_id
+                st.info(f"Already indexed as **{filename}**. Reused the existing document; no duplicate chunks were added.")
+                st.rerun()
+
+            try:
+                with st.spinner("Extracting text, running OCR where needed, chunking, and embedding..."):
+                    processed = processor.process_pdf(pdf_bytes)
+                    document_id, created = store_document(
+                        conn, uploaded_file.name, processed["text"], content_hash
+                    )
+                    if created:
+                        store_embeddings(
+                            conn, document_id, processed["embeddings"], processed["chunks"]
+                        )
+                st.session_state["selected_doc_id"] = document_id
+                st.success(
+                    f"Indexed **{uploaded_file.name}**: {len(processed['chunks'])} chunks created."
+                )
+                st.rerun()
+            except Exception as exc:
+                st.error(f"PDF processing failed: {exc}")
+
+        documents = list_documents(conn)
+        if not documents:
+            st.info("Upload and process a PDF to get started.")
+            return
+
+        document_ids = [row[0] for row in documents]
+        if st.session_state.get("selected_doc_id") not in document_ids:
+            st.session_state["selected_doc_id"] = document_ids[0]
+
+        st.subheader("2. Ask a question")
+        selected_document_id = st.selectbox(
+            "Search within this PDF only",
+            options=document_ids,
+            format_func=lambda doc_id: next(
+                (f"{filename} (uploaded {created_at:%Y-%m-%d})" for item_id, filename, created_at in documents if item_id == doc_id),
+                f"Document {doc_id}",
+            ),
+            key="selected_doc_id",
+        )
+
+        with st.form("question_form"):
+            question = st.text_input("Your question", placeholder="What are the key findings?")
+            submitted = st.form_submit_button("Get answer")
+
+        if submitted:
+            if not question.strip():
+                st.warning("Enter a question first.")
+            else:
+                try:
+                    with st.spinner("Retrieving evidence and generating an answer..."):
+                        result = qa_engine.search_documents(
+                            conn, question.strip(), document_id=selected_document_id, top_k=4
+                        )
+                    st.subheader("Answer")
+                    st.markdown(result["response"])
+                    with st.expander("Retrieved evidence", expanded=True):
+                        for index, chunk in enumerate(result["relevant_chunks"], start=1):
+                            st.markdown(
+                                f"**Source {index} · chunk {chunk['chunk_index']} · cosine distance {chunk['distance']:.3f}**"
+                            )
+                            st.write(chunk["text"])
+                except Exception as exc:
+                    st.error(f"Question answering failed: {exc}")
+    finally:
+        cleanup_db(conn)
+
 
 if __name__ == "__main__":
     main()
