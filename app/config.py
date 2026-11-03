@@ -1,24 +1,43 @@
 import os
+import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def get_config(key, default=None):
+    """
+    Read configuration from environment variables or Streamlit Secrets.
+    Environment variables take precedence.
+    """
+    value = os.getenv(key)
+
+    if value is not None:
+        return value
+
+    try:
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
+
+
 # PostgreSQL Configuration
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", "5432"))
-DB_NAME = os.getenv("DB_NAME", "pdf_qna")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+DB_HOST = get_config("DB_HOST", "localhost")
+DB_PORT = int(get_config("DB_PORT", "5432"))
+DB_NAME = get_config("DB_NAME", "pdf_qna")
+DB_USER = get_config("DB_USER", "postgres")
+DB_PASSWORD = get_config("DB_PASSWORD", "")
 
 # OpenRouter Configuration
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL = os.getenv(
+OPENROUTER_API_KEY = get_config("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = get_config(
     "OPENROUTER_MODEL",
     "nvidia/nemotron-3.5-super-vl:free"
 )
 
 # OCR Configuration
-OCR_ENABLED = os.getenv("OCR_ENABLED", "true").strip().lower() in {
-    "1", "true", "yes", "on"
-}
-OCR_LANGUAGES = os.getenv("OCR_LANGUAGES", "eng")
+OCR_ENABLED = str(
+    get_config("OCR_ENABLED", "true")
+).strip().lower() in {"1", "true", "yes", "on"}
+
+OCR_LANGUAGES = get_config("OCR_LANGUAGES", "eng")
