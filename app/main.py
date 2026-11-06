@@ -14,7 +14,7 @@ from app.database import (
 )
 from app.observability import event, timed
 from app.qa_engine import QAEngine
-from app.security import validate_query, validate_upload
+from app.security import validate_query, validate_upload, sanitize_filename
 from app.redis_store import allow_request
 from app.ingestion_queue import enqueue_pdf, get_ingestion_job
 
@@ -62,7 +62,8 @@ def main():
                     st.rerun()
 
                 with st.spinner("Uploading securely and queuing background ingestion..."):
-                    job_id = enqueue_pdf(user_id, uploaded_file.name, content_hash, pdf_bytes)
+                    safe_name = sanitize_filename(uploaded_file.name)
+                    job_id = enqueue_pdf(user_id, safe_name, content_hash, pdf_bytes)
                 st.session_state["last_ingestion_job"] = job_id
                 st.success(f"PDF queued for processing. Job ID: {job_id}")
             except ValueError as exc:
