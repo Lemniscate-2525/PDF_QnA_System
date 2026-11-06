@@ -17,6 +17,7 @@ def process_ingestion(user_id, object_path, filename, content_hash):
             conn = init_db()
             duplicate = get_document_by_hash(conn, content_hash, user_id)
             if duplicate:
+                succeeded = True
                 return {"status": "already_indexed", "document_id": duplicate[0]}
 
             processed = PDFProcessor().process_pdf(existing)
