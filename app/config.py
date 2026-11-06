@@ -48,3 +48,6 @@ SUPABASE_ANON_KEY = get_config("SUPABASE_ANON_KEY")
 
 # Redis (optional locally; required for distributed limits/cache in production)
 REDIS_URL = get_config("REDIS_URL")
+
+SUPABASE_SERVICE_ROLE_KEY = get_config("SUPABASE_SERVICE_ROLE_KEY")
+UPLOAD_BUCKET = get_config("UPLOAD_BUCKET", "pdf-uploads")
