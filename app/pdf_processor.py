@@ -41,6 +41,8 @@ class PDFProcessor:
 
         page_texts = []
         try:
+            if document.page_count > 250:
+                raise ValueError("PDF exceeds the 250-page processing limit.")
             for page_number, page in enumerate(document, start=1):
                 page_text = page.get_text("text") or ""
                 if ocr_enabled and len(page_text.strip()) < 40:
