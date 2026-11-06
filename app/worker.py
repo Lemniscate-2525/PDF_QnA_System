@@ -10,6 +10,7 @@ def process_ingestion(user_id, object_path, filename, content_hash):
     """RQ worker entrypoint. Worker must run with the same environment as the app."""
     storage = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     conn = None
+    succeeded = False
     try:
         with timed("background_pdf_ingestion", user_id=user_id):
             existing = storage.storage.from_(UPLOAD_BUCKET).download(object_path)
@@ -29,13 +30,16 @@ def process_ingestion(user_id, object_path, filename, content_hash):
                 )
             event("background_ingestion_completed", user_id=user_id, document_id=document_id,
                   chunk_count=len(processed["chunks"]))
+            succeeded = True
             return {"status": "completed", "document_id": document_id}
     except Exception as exc:
         event("background_ingestion_failed", user_id=user_id, error_type=type(exc).__name__)
         raise
     finally:
         cleanup_db(conn)
-        try:
-            storage.storage.from_(UPLOAD_BUCKET).remove([object_path])
-        except Exception:
-            pass
+        # Keep the source object when a job fails so RQ retries can reprocess it.
+        if succeeded:
+            try:
+                storage.storage.from_(UPLOAD_BUCKET).remove([object_path])
+            except Exception:
+                event("ingestion_source_cleanup_failed", user_id=user_id)
