@@ -17,6 +17,7 @@ from app.observability import event, timed
 from app.pdf_processor import PDFProcessor
 from app.qa_engine import QAEngine
 from app.security import validate_query, validate_upload
+from app.redis_store import allow_request
 
 
 @st.cache_resource
@@ -54,6 +55,10 @@ def main():
         uploaded_file = st.file_uploader("Choose a PDF file (20 MB maximum)", type=["pdf"])
         if uploaded_file and st.button("Process PDF", type="primary"):
             try:
+                allowed, retry_ms = allow_request(user_id, "upload", limit=5, window_seconds=3600)
+                if not allowed:
+                    st.warning(f"Upload limit reached. Try again in about {max(1, retry_ms // 60000)} minute(s).")
+                    st.stop()
                 pdf_bytes = validate_upload(uploaded_file)
                 content_hash = hashlib.sha256(pdf_bytes).hexdigest()
                 existing = get_document_by_hash(conn, content_hash, user_id)
@@ -111,6 +116,10 @@ def main():
         if submitted:
             try:
                 question = validate_query(question)
+                allowed, retry_ms = allow_request(user_id, "question", limit=30, window_seconds=60)
+                if not allowed:
+                    st.warning(f"Question limit reached. Retry in {max(1, retry_ms // 1000)} second(s).")
+                    st.stop()
                 with st.spinner("Retrieving evidence and generating an answer..."):
                     with timed("question_answering", user_id=user_id, document_id=selected_document_id):
                         result = qa_engine.search_documents(
