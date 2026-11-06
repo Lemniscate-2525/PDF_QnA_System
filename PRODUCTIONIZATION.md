@@ -34,22 +34,22 @@ Create a **private** bucket named `pdf-uploads` (or set `UPLOAD_BUCKET` to anoth
 
 ### 3. Database migration
 
-The app's additive initialization adds `documents.user_id`, replaces the old global content-hash uniqueness rule with a per-user uniqueness rule, and creates the owner index. The equivalent SQL is in `migrations/001_user_isolation.sql`.
+Apply `migrations/001_user_isolation.sql` once through Supabase SQL migrations after reviewing it. It adds `documents.user_id`, replaces global content-hash uniqueness with per-user uniqueness, enables RLS on both public tables without granting direct client policies, and creates the private `pdf-uploads` bucket. The app no longer runs DDL during normal startup.
 
 Existing rows have a NULL owner and are deliberately invisible to authenticated users. Do not bulk-assign them to an account unless you have verified who owns each document. Back up the database before deploying schema changes.
 
-The application connects with its server-side PostgreSQL credentials. All document reads, duplicate checks, writes and vector retrievals include the authenticated user ID. Do not add an unscoped document query to the UI.
+The application and worker connect with trusted server-side PostgreSQL credentials. RLS blocks direct anon/authenticated PostgREST access; the server-side database owner connection bypasses RLS and therefore MUST retain explicit `user_id` filters on every document operation. All document reads, duplicate checks, writes and vector retrievals include the authenticated user ID. Do not add an unscoped document query to the UI.
 
 ### 4. Redis
 
 Provision a Redis instance with TLS where supported and configure `REDIS_URL`.
 
-The sliding-window limiter is a Lua script using Redis server time and a sorted set, so the check-and-increment operation is atomic across app instances. Current defaults:
+The sliding-window limiter is a Lua script using Redis server time and a sorted set, so the check-and-increment operation is atomic across app instances. The Railway Redis service uses a persistent volume and a password; connect only over Railway's private network. Current defaults:
 
 - 5 PDF uploads per user per hour
 - 30 questions per user per minute
 
-The answer cache key includes the user ID, document ID, query and retrieval depth. This prevents cross-user cache collisions. Cached answers expire after 180 seconds.
+The answer cache key includes the user ID, document ID, query and retrieval depth. This prevents cross-user cache collisions. Cached answers expire after 180 seconds. Redis is private to the Railway project network and password protected.
 
 Redis is required for the intended production behavior. Without `REDIS_URL`, the limiter and cache helpers operate in local-development fallback mode; do not deploy publicly in that mode.
 
