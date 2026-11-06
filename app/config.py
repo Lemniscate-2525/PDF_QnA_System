@@ -1,5 +1,4 @@
 import os
-import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,6 +15,7 @@ def get_config(key, default=None):
         return value
 
     try:
+        import streamlit as st
         return st.secrets.get(key, default)
     except Exception:
         return default
@@ -41,3 +41,15 @@ OCR_ENABLED = str(
 ).strip().lower() in {"1", "true", "yes", "on"}
 
 OCR_LANGUAGES = get_config("OCR_LANGUAGES", "eng")
+
+# Supabase Auth
+SUPABASE_URL = get_config("SUPABASE_URL")
+SUPABASE_ANON_KEY = get_config("SUPABASE_ANON_KEY")
+
+# Redis (optional locally; required for distributed limits/cache in production)
+REDIS_URL = get_config("REDIS_URL")
+
+SUPABASE_SERVICE_ROLE_KEY = get_config("SUPABASE_SERVICE_ROLE_KEY")
+UPLOAD_BUCKET = get_config("UPLOAD_BUCKET", "pdf-uploads")
+
+APP_ENV = get_config("APP_ENV", "development").strip().lower()

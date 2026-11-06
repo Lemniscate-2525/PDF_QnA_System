@@ -315,9 +315,9 @@ The QA engine constructs a prompt containing the user's question and retrieved p
 
 The displayed source passages allow users to inspect the evidence returned by retrieval. They do not guarantee that every generated claim is correct.
 
-## Current scope and limitations
+## Current scope and limitations (main branch / v1 deployment)
 
-This is a deployed engineering project and a functional end-to-end RAG implementation. It is not yet a hardened multi-tenant production service.
+The main branch is the original deployed v1 application and is not a hardened multi-tenant production service. The productionization-v2 branch and its draft pull request contain the ongoing upgrade; those changes are not active in the live deployment until configured, tested, and merged.
 
 - **Authentication and authorization:** User accounts and per-user document ownership controls are not implemented. Document-scoped retrieval is not a substitute for user-level authorization.
 - **Rate limiting and abuse protection:** Application-level user quotas and request throttling are not implemented.
@@ -355,3 +355,12 @@ This is a deployed engineering project and a functional end-to-end RAG implement
 ## License
 
 Add a license file if you intend to distribute this project for reuse. Until a license is added, the repository's source code is not automatically granted an open-source license.
+
+
+## Productionization v2
+
+The `productionization-v2` branch adds authenticated user workspaces, per-user document ownership and retrieval checks, Redis-backed sliding-window rate limiting and answer caching, hardened input handling, prompt-injection defenses, and an RQ-based background ingestion worker.
+
+See [PRODUCTIONIZATION.md](PRODUCTIONIZATION.md) for the service architecture, required secrets, Supabase Storage setup, worker deployment, migration behavior, and two-user security verification checklist.
+
+These changes are not active on the current production deployment until the branch is configured, tested, and merged/deployed.
