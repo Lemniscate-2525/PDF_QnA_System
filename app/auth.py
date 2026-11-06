@@ -17,6 +17,29 @@ def current_user():
 def require_authentication() -> bool:
     """Render login/signup and return True only for an authenticated session."""
     if current_user():
+        try:
+            verified = st.session_state.auth_client.auth.get_user(
+                current_user()["access_token"]
+            )
+            if not verified.user or str(verified.user.id) != current_user()["id"]:
+                raise RuntimeError("Session identity mismatch.")
+        except Exception:
+            try:
+                refreshed = st.session_state.auth_client.auth.refresh_session(
+                    current_user()["refresh_token"]
+                )
+                if not refreshed.user or not refreshed.session:
+                    raise RuntimeError("Session refresh failed.")
+                st.session_state.auth_user = {
+                    "id": str(refreshed.user.id),
+                    "email": refreshed.user.email,
+                    "access_token": refreshed.session.access_token,
+                    "refresh_token": refreshed.session.refresh_token,
+                }
+            except Exception:
+                st.session_state.pop("auth_user", None)
+                st.session_state.pop("auth_client", None)
+                return False
         with st.sidebar:
             st.caption(f"Signed in as {current_user().get('email', 'user')}")
             if st.button("Sign out", use_container_width=True):
