@@ -51,3 +51,5 @@ REDIS_URL = get_config("REDIS_URL")
 
 SUPABASE_SERVICE_ROLE_KEY = get_config("SUPABASE_SERVICE_ROLE_KEY")
 UPLOAD_BUCKET = get_config("UPLOAD_BUCKET", "pdf-uploads")
+
+APP_ENV = get_config("APP_ENV", "development").strip().lower()
