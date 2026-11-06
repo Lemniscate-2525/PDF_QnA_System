@@ -11,18 +11,12 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.auth import require_authentication, current_user
 from app.database import (
     cleanup_db, get_document_by_hash, init_db, list_documents,
-    store_document, store_embeddings,
 )
 from app.observability import event, timed
-from app.pdf_processor import PDFProcessor
 from app.qa_engine import QAEngine
 from app.security import validate_query, validate_upload
 from app.redis_store import allow_request
-
-
-@st.cache_resource
-def get_pdf_processor():
-    return PDFProcessor()
+from app.ingestion_queue import enqueue_pdf, get_ingestion_job
 
 
 @st.cache_resource
@@ -48,7 +42,6 @@ def main():
         st.stop()
 
     try:
-        processor = get_pdf_processor()
         qa_engine = get_qa_engine()
 
         st.subheader("1. Add a PDF")
@@ -68,25 +61,31 @@ def main():
                     st.info(f"Already indexed in your account as **{filename}**.")
                     st.rerun()
 
-                with st.spinner("Extracting, OCR-ing, chunking, and embedding..."):
-                    with timed("pdf_ingestion", user_id=user_id, bytes=len(pdf_bytes)):
-                        processed = processor.process_pdf(pdf_bytes)
-                        document_id, created = store_document(
-                            conn, uploaded_file.name, processed["text"], content_hash, user_id
-                        )
-                        if created:
-                            store_embeddings(
-                                conn, document_id, processed["embeddings"],
-                                processed["chunks"], user_id
-                            )
-                st.session_state["selected_doc_id"] = document_id
-                st.success(f"Indexed **{uploaded_file.name}**: {len(processed['chunks'])} chunks.")
-                st.rerun()
+                with st.spinner("Uploading securely and queuing background ingestion..."):
+                    job_id = enqueue_pdf(user_id, uploaded_file.name, content_hash, pdf_bytes)
+                st.session_state["last_ingestion_job"] = job_id
+                st.success(f"PDF queued for processing. Job ID: {job_id}")
             except ValueError as exc:
                 st.warning(str(exc))
             except Exception as exc:
-                event("pdf_ingestion_failed", user_id=user_id, error_type=type(exc).__name__)
-                st.error("PDF processing failed. Check the application logs for the error details.")
+                event("pdf_enqueue_failed", user_id=user_id, error_type=type(exc).__name__)
+                st.error("Could not queue PDF processing. Check Redis, storage bucket, and worker configuration.")
+
+
+
+        job_id = st.session_state.get("last_ingestion_job")
+        if job_id:
+            try:
+                job = get_ingestion_job(job_id)
+                st.info(f"Latest ingestion job: {job.get_status()} | {job_id}")
+                if job.is_finished:
+                    st.success(f"Ingestion finished: {job.result}")
+                    st.session_state.pop("last_ingestion_job", None)
+                    st.rerun()
+                elif job.is_failed:
+                    st.error("Ingestion failed. Check the worker logs.")
+            except Exception:
+                st.caption("Ingestion status is temporarily unavailable.")
 
         documents = list_documents(conn, user_id)
         if not documents:
