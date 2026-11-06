@@ -355,3 +355,12 @@ This is a deployed engineering project and a functional end-to-end RAG implement
 ## License
 
 Add a license file if you intend to distribute this project for reuse. Until a license is added, the repository's source code is not automatically granted an open-source license.
+
+
+## Productionization v2
+
+The `productionization-v2` branch adds authenticated user workspaces, per-user document ownership and retrieval checks, Redis-backed sliding-window rate limiting and answer caching, hardened input handling, prompt-injection defenses, and an RQ-based background ingestion worker.
+
+See [PRODUCTIONIZATION.md](PRODUCTIONIZATION.md) for the service architecture, required secrets, Supabase Storage setup, worker deployment, migration behavior, and two-user security verification checklist.
+
+These changes are not active on the current production deployment until the branch is configured, tested, and merged/deployed.
