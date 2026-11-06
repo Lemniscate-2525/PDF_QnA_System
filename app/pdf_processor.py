@@ -1,7 +1,7 @@
 from functools import lru_cache
 import re
 
-import fitz
+import pymupdf as fitz
 import numpy as np
 import pytesseract
 from PIL import Image
