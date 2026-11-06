@@ -315,9 +315,9 @@ The QA engine constructs a prompt containing the user's question and retrieved p
 
 The displayed source passages allow users to inspect the evidence returned by retrieval. They do not guarantee that every generated claim is correct.
 
-## Current scope and limitations
+## Current scope and limitations (main branch / v1 deployment)
 
-This is a deployed engineering project and a functional end-to-end RAG implementation. It is not yet a hardened multi-tenant production service.
+The main branch is the original deployed v1 application and is not a hardened multi-tenant production service. The productionization-v2 branch and its draft pull request contain the ongoing upgrade; those changes are not active in the live deployment until configured, tested, and merged.
 
 - **Authentication and authorization:** User accounts and per-user document ownership controls are not implemented. Document-scoped retrieval is not a substitute for user-level authorization.
 - **Rate limiting and abuse protection:** Application-level user quotas and request throttling are not implemented.
