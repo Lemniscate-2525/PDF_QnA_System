@@ -42,3 +42,14 @@ def test_cache_keys_are_user_scoped_and_not_plaintext():
     key_b = cache_key("answer", "user-b", 12, "question")
     assert key_a != key_b
     assert "question" not in key_a
+
+
+def test_cache_key_is_scoped_to_document_and_user():
+    from app.redis_store import cache_key
+
+    assert cache_key("answer", "u1", 1, "same question") != cache_key(
+        "answer", "u1", 2, "same question"
+    )
+    assert cache_key("answer", "u1", 1, "same question") != cache_key(
+        "answer", "u2", 1, "same question"
+    )
