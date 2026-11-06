@@ -23,7 +23,7 @@ def require_authentication() -> bool:
                 try:
                     st.session_state.auth_client.auth.sign_out()
                 finally:
-                    for key in ("auth_user", "auth_client"):
+                    for key in ("auth_user", "auth_client", "selected_doc_id", "last_ingestion_job"):
                         st.session_state.pop(key, None)
                     st.rerun()
         return True
