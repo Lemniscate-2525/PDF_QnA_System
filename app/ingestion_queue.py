@@ -16,16 +16,23 @@ def enqueue_pdf(user_id, filename, content_hash, pdf_bytes):
         object_path, pdf_bytes,
         file_options={"content-type": "application/pdf", "upsert": "false"},
     )
-    queue = Queue("pdf-ingestion", connection=Redis.from_url(REDIS_URL))
-    job = queue.enqueue(
-        "app.worker.process_ingestion",
-        user_id, object_path, filename, content_hash,
-        job_timeout=1800,
-        result_ttl=86400,
-        failure_ttl=604800,
-        retry=Retry(max=2, interval=[30, 120]),
-    )
-    return job.id
+    try:
+        queue = Queue("pdf-ingestion", connection=Redis.from_url(REDIS_URL))
+        job = queue.enqueue(
+            "app.worker.process_ingestion",
+            user_id, object_path, filename, content_hash,
+            job_timeout=1800,
+            result_ttl=86400,
+            failure_ttl=604800,
+            retry=Retry(max=2, interval=[30, 120]),
+        )
+        return job.id
+    except Exception:
+        try:
+            storage.storage.from_(UPLOAD_BUCKET).remove([object_path])
+        except Exception:
+            pass
+        raise
 
 
 def get_ingestion_job(job_id):
