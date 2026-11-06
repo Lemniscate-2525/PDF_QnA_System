@@ -1,9 +1,18 @@
 FROM python:3.11-slim
 
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr libgomp1 \
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tesseract-ocr libgomp1 \
     && rm -rf /var/lib/apt/lists/*
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Install CPU-only PyTorch. The default PyPI Linux wheel can pull CUDA/NVIDIA
+# libraries that this CPU worker does not need.
+RUN pip install --no-cache-dir torch==2.6.0+cpu \
+    --index-url https://download.pytorch.org/whl/cpu
+
+COPY requirements-worker.txt .
+RUN pip install --no-cache-dir -r requirements-worker.txt
+
 COPY . .
 CMD ["python", "worker_entrypoint.py"]
