@@ -1,3 +1,5 @@
+import re
+
 import streamlit as st
 from supabase import Client, create_client
 
@@ -8,6 +10,16 @@ def _client() -> Client:
     if not SUPABASE_URL or not SUPABASE_ANON_KEY:
         raise RuntimeError("Configure SUPABASE_URL and SUPABASE_ANON_KEY.")
     return create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+
+def _safe_auth_error(exc: Exception) -> str:
+    """Return useful provider diagnostics without leaking configured secrets."""
+    message = str(exc).strip() or "No additional error message was returned."
+    for secret in (SUPABASE_ANON_KEY, SUPABASE_URL):
+        if secret:
+            message = message.replace(secret, "[redacted]")
+    message = re.sub(r"Bearer\\s+\\S+", "Bearer [redacted]", message, flags=re.IGNORECASE)
+    return f"{type(exc).__name__}: {message[:400]}"
 
 
 def current_user():
@@ -83,7 +95,7 @@ def require_authentication() -> bool:
                 "refresh_token": result.session.refresh_token,
             }
             st.rerun()
-        except Exception:
-            st.error("Authentication failed. Check your credentials or account verification.")
+        except Exception as exc:
+            st.error(f"Authentication request failed — {_safe_auth_error(exc)}")
     st.caption("Each account can access only documents it owns.")
     return False
