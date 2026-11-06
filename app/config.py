@@ -41,3 +41,10 @@ OCR_ENABLED = str(
 ).strip().lower() in {"1", "true", "yes", "on"}
 
 OCR_LANGUAGES = get_config("OCR_LANGUAGES", "eng")
+
+# Supabase Auth
+SUPABASE_URL = get_config("SUPABASE_URL")
+SUPABASE_ANON_KEY = get_config("SUPABASE_ANON_KEY")
+
+# Redis (optional locally; required for distributed limits/cache in production)
+REDIS_URL = get_config("REDIS_URL")
