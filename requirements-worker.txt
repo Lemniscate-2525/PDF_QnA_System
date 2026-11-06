@@ -1,0 +1,11 @@
+numpy>=1.26
+psycopg2-binary>=2.9
+pgvector>=0.2.5
+PyMuPDF>=1.24
+pytesseract>=0.3.10
+Pillow>=10.0
+python-dotenv>=1.0
+sentence-transformers>=2.6
+supabase>=2.4
+redis>=5.0
+rq>=2.0
