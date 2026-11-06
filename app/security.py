@@ -1,4 +1,5 @@
 import re
+from pathlib import PurePath
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_PDF_PAGES = 250
@@ -31,3 +32,11 @@ def validate_query(query):
     if not re.search(r"[\w]", query, flags=re.UNICODE):
         raise ValueError("Question must contain readable text.")
     return query
+
+
+def sanitize_filename(filename):
+    name = PurePath(filename or "document.pdf").name
+    name = re.sub(r"[^A-Za-z0-9._ -]", "_", name).strip(" .")
+    if not name:
+        name = "document.pdf"
+    return name[:MAX_FILENAME_CHARS]
