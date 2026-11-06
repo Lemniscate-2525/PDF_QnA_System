@@ -1,5 +1,4 @@
 import os
-import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,6 +15,7 @@ def get_config(key, default=None):
         return value
 
     try:
+        import streamlit as st
         return st.secrets.get(key, default)
     except Exception:
         return default
