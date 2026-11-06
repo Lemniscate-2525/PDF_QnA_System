@@ -4,7 +4,7 @@ import secrets
 
 import redis
 
-from app.config import REDIS_URL
+from app.config import REDIS_URL, APP_ENV
 
 _client = None
 
@@ -41,6 +41,8 @@ def get_redis():
 def allow_request(user_id, action, limit, window_seconds=60):
     client = get_redis()
     if client is None:
+        if APP_ENV == "production":
+            raise RuntimeError("Redis is required in production for distributed rate limiting.")
         return True, 0
     key = f"pdfqna:ratelimit:{action}:{user_id}"
     allowed, count, retry_ms = client.eval(
@@ -54,14 +56,20 @@ def cache_get(key):
     client = get_redis()
     if client is None:
         return None
-    value = client.get(key)
-    return json.loads(value) if value else None
+    try:
+        value = client.get(key)
+        return json.loads(value) if value else None
+    except redis.RedisError:
+        return None
 
 
 def cache_set(key, value, ttl=300):
     client = get_redis()
     if client is not None:
-        client.setex(key, ttl, json.dumps(value, separators=(",", ":")))
+        try:
+            client.setex(key, ttl, json.dumps(value, separators=(",", ":")))
+        except redis.RedisError:
+            pass
 
 
 def cache_key(*parts):
