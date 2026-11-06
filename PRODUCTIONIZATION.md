@@ -55,7 +55,7 @@ Redis is required for the intended production behavior. Without `REDIS_URL`, the
 
 ### 5. Streamlit secrets
 
-Configure the existing database and OpenRouter values plus:
+Set `APP_ENV = "production"` and configure the existing database and OpenRouter values plus:
 
 ```toml
 SUPABASE_URL = "https://your-project.supabase.co"
