@@ -3,11 +3,15 @@ from functools import lru_cache
 
 import numpy as np
 from openai import OpenAI
+from pybreaker import CircuitBreaker
 
 from app.config import OPENROUTER_API_KEY, OPENROUTER_MODEL
 from app.pdf_processor import get_embedding_model
 from app.database import search_similar_chunks
 from app.redis_store import cache_get, cache_set, cache_key
+
+
+llm_breaker = CircuitBreaker(fail_max=5, reset_timeout=30, name='openrouter')
 
 
 class QAEngine:
@@ -50,9 +54,9 @@ class QAEngine:
             f'{chunk["text"]}\n</source>'
             for index, chunk in enumerate(similar_chunks)
         )
-        response = self.client.chat.completions.create(
+        response = llm_breaker.call(self.client.chat.completions.create,
             model=self.llm_model,
-            temperature=0.1,
+            temperature=0.1,\n            max_tokens=1200,
             messages=[
                 {
                     "role": "system",
