@@ -3,7 +3,7 @@ import re
 import streamlit as st
 from supabase import Client, create_client
 
-from app.config import SUPABASE_URL, SUPABASE_ANON_KEY
+from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, APP_URL
 
 
 def _client() -> Client:
@@ -97,7 +97,7 @@ def require_authentication() -> bool:
         return True
 
     st.title("PDF Q&A")
-    st.subheader("Sign in to your private workspace")
+    st.subheader("Your documents. Your answers.")
     mode = st.radio("Account", ["Sign in", "Create account"], horizontal=True)
     with st.form("auth_form"):
         email = st.text_input("Email", max_chars=254).strip().lower()
@@ -133,5 +133,21 @@ def require_authentication() -> bool:
             st.rerun()
         except Exception as exc:
             st.error(f"Authentication request failed — {_safe_auth_error(exc)}")
-    st.caption("Each account can access only documents it owns.")
+    st.divider()
+    st.caption("Or continue with")
+    if st.button("Continue with Google", use_container_width=True):
+        try:
+            client = _client()
+            oauth = client.auth.sign_in_with_oauth({
+                "provider": "google",
+                "options": {"redirect_to": APP_URL},
+            })
+            if not oauth.url:
+                raise RuntimeError("Supabase did not return a Google authorization URL.")
+            st.session_state["google_oauth_url"] = oauth.url
+        except Exception as exc:
+            st.error(f"Google sign-in could not be started — {_safe_auth_error(exc)}")
+    if st.session_state.get("google_oauth_url"):
+        st.link_button("Continue to Google", st.session_state["google_oauth_url"], use_container_width=True)
+    st.caption("Your documents remain isolated to your account.")
     return False

@@ -59,13 +59,13 @@ def render_ingestion_status():
 
 
 def main():
-    st.set_page_config(page_title="Private PDF Q&A", page_icon="📄", layout="wide")
+    st.set_page_config(page_title="DocuMind | PDF Q&A", page_icon="📄", layout="wide")
     if not require_authentication():
         st.stop()
 
     user = current_user()
     user_id = user["id"]
-    st.title("📄 Private PDF Question Answering")
+    st.title("🧠 DocuMind · PDF Q&A")
     st.caption("Your documents are isolated by account. Only you can access your indexed PDFs.")
 
     try:
