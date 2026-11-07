@@ -1,13 +1,8 @@
-import html
 import re
-import secrets
-from urllib.parse import urlencode
-
 import streamlit as st
 from supabase import Client, ClientOptions, create_client
 
-from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, APP_URL
-from app.auth_storage import RedisAuthStorage
+from app.config import SUPABASE_URL, SUPABASE_ANON_KEY
 
 
 def _client(storage=None) -> Client:
@@ -36,40 +31,11 @@ def current_user():
 
 
 def _handle_auth_callback() -> None:
+    """Complete email-confirmation PKCE callbacks initiated in this session."""
     code = st.query_params.get("code")
     if not code:
         return
 
-    flow_id = st.query_params.get("oauth_flow")
-    if flow_id:
-        if not re.fullmatch(r"[a-f0-9]{48}", flow_id):
-            st.error("The Google sign-in link is invalid or expired. Please start again.")
-            return
-        storage = RedisAuthStorage(flow_id)
-        try:
-            client = _client(storage=storage)
-            result = client.auth.exchange_code_for_session(code)
-            if not result.user or not result.session:
-                raise RuntimeError("Supabase did not return an authenticated session.")
-            st.session_state.auth_client = client
-            st.session_state.auth_user = {
-                "id": str(result.user.id),
-                "email": result.user.email,
-                "access_token": result.session.access_token,
-                "refresh_token": result.session.refresh_token,
-            }
-            storage.clear()
-            st.query_params.clear()
-            st.rerun()
-        except Exception as exc:
-            storage.clear()
-            st.error(
-                "Google sign-in could not be completed. The one-time sign-in link may have expired; "
-                f"please try again. Details: {_safe_auth_error(exc)}"
-            )
-        return
-
-    # Existing email-confirmation links were initiated in the same Streamlit session.
     client = st.session_state.get("auth_client")
     if client is None:
         st.error("The email confirmation session is unavailable. Please request a new confirmation link.")
@@ -162,28 +128,6 @@ def require_authentication() -> bool:
         except Exception as exc:
             st.error(f"Authentication request failed — {_safe_auth_error(exc)}")
 
-    st.divider()
-    st.caption("Or continue with")
-    if st.button("Continue with Google", use_container_width=True):
-        try:
-            flow_id = secrets.token_hex(24)
-            storage = RedisAuthStorage(flow_id)
-            client = _client(storage=storage)
-            redirect_to = f"{APP_URL.rstrip('/')}?{urlencode({'oauth_flow': flow_id})}"
-            oauth = client.auth.sign_in_with_oauth({
-                "provider": "google",
-                "options": {"redirect_to": redirect_to},
-            })
-            if not oauth.url:
-                raise RuntimeError("Supabase did not return a Google authorization URL.")
-            st.session_state["google_oauth_url"] = oauth.url
-        except Exception as exc:
-            st.error(f"Google sign-in could not be started — {_safe_auth_error(exc)}")
-    if st.session_state.get("google_oauth_url"):
-        oauth_url = html.escape(st.session_state["google_oauth_url"], quote=True)
-        st.markdown(
-            f'<a href="{oauth_url}" target="_self" rel="noopener noreferrer">Continue to Google</a>',
-            unsafe_allow_html=True,
-        )
+    st.caption("Sign in securely with your email and password.")
     st.caption("Your documents remain isolated to your account.")
     return False
