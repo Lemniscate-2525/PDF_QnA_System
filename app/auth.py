@@ -7,7 +7,7 @@ import streamlit as st
 from supabase import Client, ClientOptions, create_client
 
 from app.config import SUPABASE_URL, SUPABASE_ANON_KEY, APP_URL
-from app.redis_store import RedisAuthStorage
+from app.auth_storage import RedisAuthStorage
 
 
 def _client(storage=None) -> Client:
