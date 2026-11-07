@@ -1,3 +1,4 @@
+import html
 import re
 
 import streamlit as st
@@ -27,7 +28,7 @@ def current_user():
 
 
 def _handle_email_verification_callback() -> None:
-    """Exchange Supabase's PKCE email-confirmation code for an app session."""
+    """Exchange Supabase PKCE callback codes (email confirmation or OAuth) for an app session."""
     code = st.query_params.get("code")
     if not code:
         return
@@ -35,8 +36,8 @@ def _handle_email_verification_callback() -> None:
     client = st.session_state.get("auth_client")
     if client is None:
         st.error(
-            "Email verification returned to the app, but its PKCE session is missing. "
-            "Please start a fresh signup and open the newest confirmation link in the same browser."
+            "Authentication returned to the app, but its PKCE verifier is missing. "
+            "Please retry Google sign-in in the same browser tab. If this persists, check the OAuth callback/session configuration."
         )
         return
 
@@ -52,7 +53,7 @@ def _handle_email_verification_callback() -> None:
             "refresh_token": result.session.refresh_token,
         }
         st.query_params.clear()
-        st.success("Email verified successfully.")
+        st.success("Signed in successfully.")
         st.rerun()
     except Exception as exc:
         st.error(f"Email verification callback failed — {_safe_auth_error(exc)}")
@@ -138,6 +139,9 @@ def require_authentication() -> bool:
     if st.button("Continue with Google", use_container_width=True):
         try:
             client = _client()
+            # Supabase PKCE keeps its code verifier in this client's auth storage.
+            # Retain the same client for the callback code exchange.
+            st.session_state.auth_client = client
             oauth = client.auth.sign_in_with_oauth({
                 "provider": "google",
                 "options": {"redirect_to": APP_URL},
@@ -148,6 +152,12 @@ def require_authentication() -> bool:
         except Exception as exc:
             st.error(f"Google sign-in could not be started — {_safe_auth_error(exc)}")
     if st.session_state.get("google_oauth_url"):
-        st.link_button("Continue to Google", st.session_state["google_oauth_url"], use_container_width=True)
+        # Force the OAuth round-trip in this tab; opening a second tab creates a
+        # separate Streamlit session and can lose the in-memory PKCE verifier.
+        oauth_url = html.escape(st.session_state["google_oauth_url"], quote=True)
+        st.markdown(
+            f'<a href="{oauth_url}" target="_self" rel="noopener noreferrer">Continue to Google</a>',
+            unsafe_allow_html=True,
+        )
     st.caption("Your documents remain isolated to your account.")
     return False
