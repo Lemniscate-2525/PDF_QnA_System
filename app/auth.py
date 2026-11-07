@@ -26,8 +26,41 @@ def current_user():
     return st.session_state.get("auth_user")
 
 
+def _handle_email_verification_callback() -> None:
+    """Exchange Supabase's PKCE email-confirmation code for an app session."""
+    code = st.query_params.get("code")
+    if not code:
+        return
+
+    client = st.session_state.get("auth_client")
+    if client is None:
+        st.error(
+            "Email verification returned to the app, but its PKCE session is missing. "
+            "Please start a fresh signup and open the newest confirmation link in the same browser."
+        )
+        return
+
+    try:
+        result = client.auth.exchange_code_for_session(code)
+        if not result.user or not result.session:
+            raise RuntimeError("Supabase did not return an authenticated session.")
+        st.session_state.auth_client = client
+        st.session_state.auth_user = {
+            "id": str(result.user.id),
+            "email": result.user.email,
+            "access_token": result.session.access_token,
+            "refresh_token": result.session.refresh_token,
+        }
+        st.query_params.clear()
+        st.success("Email verified successfully.")
+        st.rerun()
+    except Exception as exc:
+        st.error(f"Email verification callback failed — {_safe_auth_error(exc)}")
+
+
 def require_authentication() -> bool:
     """Render login/signup and return True only for an authenticated session."""
+    _handle_email_verification_callback()
     if current_user():
         try:
             verified = st.session_state.auth_client.auth.get_user(
@@ -78,9 +111,12 @@ def require_authentication() -> bool:
         try:
             client = _client()
             if mode == "Create account":
+                # Keep this client in the Streamlit session: Supabase PKCE stores
+                # the code verifier in the client's auth storage until callback.
+                st.session_state.auth_client = client
                 result = client.auth.sign_up({"email": email, "password": password})
                 if not result.session:
-                    st.success("Account created. Verify your email, then sign in.")
+                    st.success("Account created. Check your email and open the latest confirmation link.")
                     return False
             else:
                 result = client.auth.sign_in_with_password({"email": email, "password": password})
