@@ -129,6 +129,41 @@ def search_similar_chunks(conn, query_embedding, document_id, user_id, limit=4):
         return cur.fetchall()
 
 
+def fetch_document_overview_chunks(conn, document_id, user_id, limit=12):
+    """Fetch evenly distributed chunks for a document overview, scoped to its owner."""
+    if not user_id:
+        raise PermissionError("Authentication required.")
+    limit = max(1, min(int(limit), 24))
+    with conn.cursor() as cur:
+        cur.execute(
+            """WITH ordered_chunks AS (
+                   SELECT e.text_chunk,
+                          e.chunk_index,
+                          ROW_NUMBER() OVER (ORDER BY e.chunk_index) AS row_num,
+                          COUNT(*) OVER () AS total_chunks
+                   FROM embeddings e
+                   INNER JOIN documents d ON d.id = e.document_id
+                   WHERE e.document_id = %s AND d.user_id = %s
+               ),
+               sampled_chunks AS (
+                   SELECT text_chunk, chunk_index
+                   FROM ordered_chunks
+                   WHERE row_num = 1
+                      OR MOD(row_num, GREATEST(1, CEIL(total_chunks::numeric / %s)::int)) = 0
+               )
+               SELECT text_chunk, 0.0::double precision AS distance, chunk_index
+               FROM sampled_chunks
+               ORDER BY chunk_index
+               LIMIT %s""",
+            (document_id, user_id, limit, limit),
+        )
+        rows = cur.fetchall()
+    return [
+        {"text": text, "distance": float(distance), "chunk_index": chunk_index}
+        for text, distance, chunk_index in rows
+    ]
+
+
 def cleanup_db(conn):
     if conn is not None:
         conn.close()
